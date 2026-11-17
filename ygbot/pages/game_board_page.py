@@ -143,11 +143,13 @@ class GameBoardPage(BasePage):
         time.sleep(self.key_delay)
         return True
 
-    def focus_next_hand_card(self, turn_number: Optional[int] = None) -> bool:
+    def focus_next_hand_card(self, target_slot: Optional[int] = None, turn_number: Optional[int] = None) -> bool:
         """Focuses the next hand card by pressing ArrowRight."""
         t = turn_number or self.turn_number
         self.send_key("ArrowRight", description="Focus next card -> [ArrowRight]", turn_number=t)
-        if self.current_hand_slot is not None:
+        if target_slot is not None:
+            self.current_hand_slot = target_slot
+        elif self.current_hand_slot is not None:
             self.current_hand_slot = min(self.current_hand_slot + 1, 4)
         else:
             self.current_hand_slot = 0

@@ -115,6 +115,15 @@ def format_cards_table(cards: list) -> str:
 
         rows.append([slot, name, ctype_str, atk, def_, star])
 
+    # Sort table rows in ascending order by slot number (Slot 1 to 5)
+    def _slot_sort_key(row):
+        try:
+            return int(row[0])
+        except (ValueError, TypeError):
+            return 999
+
+    rows.sort(key=_slot_sort_key)
+
     col_widths = [len(h) for h in headers]
     for row in rows:
         for i, val in enumerate(row):
