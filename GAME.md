@@ -96,14 +96,30 @@ flowchart LR
 
 ---
 
-## 5. Canonical Fusion Recipes
+## 5. Canonical Fusion Recipes & Priority Strategy
 
-Fusions are calculated by combining archetype properties and card strengths:
+YGBot evaluates hands using a strict, optimal farming hierarchy:
+
+1. **Top Priority: Meteor Black Dragon Fusion + Equip (3500 - 4000+ ATK)**
+   - **Materials:** *Red-Eyes B. Dragon* (2400 ATK) + *Meteor Dragon* (1800 ATK).
+   - **Equip Addition:** Immediately appends compatible equip cards (*Dragon Treasure*) to reach **4000+ ATK** in the same turn!
+   - **Guardian Star:** *Sun* (countering Moon / Dark Magician / spellcasters).
+2. **Second Priority: Twin-Headed Thunder Dragon Fusion + Equip (2800 - 3300+ ATK)**
+   - **Materials:** Any *Thunder* monster + any *Dragon* monster.
+   - **Equip Addition:** Appends compatible equip cards (*Dragon Treasure*, *Shine Palace*, *Electro-Whip*).
+   - **Guardian Star:** *Pluto* (countering Neptune / Aqua).
+3. **Third Priority: Discard & Hand Cycling (When no THTD or Meteor Black Dragon exists)**
+   - **Repeated Dragons:** Discards duplicate dragons, keeping only the single strongest dragon.
+   - **Repeated Thunders:** Discards duplicate thunders, keeping only the single strongest thunder.
+   - **Extra Equips:** If holding more than 2 equip cards, discards the extra ones.
+   - **Mechanism:** Fuses/burns the dead cards into the Graveyard, placing the keeper monster on field, ensuring the hand automatically draws fresh replacements next turn!
+
+### Standard Forbidden Memories Fusion Table:
 
 | Result Monster | ATK | DEF | Recipe Requirements | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| **Twin-Headed Thunder Dragon** | **2800** | **2100** | **Dragon + Thunder** | The primary speedrun and farming monster in the game. |
-| **Meteor B. Dragon** | **3500** | **2000** | **Meteor Dragon + Red-Eyes B. Dragon** | Highest ATK standard fusion in the game. |
+| **Meteor Black Dragon** | **3500** | **2000** | **Meteor Dragon + Red-Eyes B. Dragon** | Highest ATK fusion in the game; 4000 ATK with Dragon Treasure. |
+| **Twin-Headed Thunder Dragon** | **2800** | **2100** | **Dragon + Thunder** | The cornerstone speedrun and farming monster. |
 | **Black Forest Dragon** | **2100** | **1800** | **Dragon + Plant** | Secondary high-ATK early-game dragon fusion. |
 | **Flame Cerebrus** | **2100** | **1800** | **Beast + Pyro** | Powerful non-dragon fusion. |
 | **Mystical Sand** | **2100** | **1700** | **Rock + Female** | Highly consistent secondary fusion. |

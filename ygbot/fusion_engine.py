@@ -47,7 +47,9 @@ from .cards.registry import (
 from .fusion.result import FusionResult
 from .fusion.strategy import (
     FusionStrategy,
+    MeteorBlackDragonStrategy,
     THTDFusionStrategy,
+    DiscardAndCycleStrategy,
     EquipBuffStrategy,
     ElementalFusionStrategy,
     HighestAtkStrategy,
@@ -83,7 +85,9 @@ __all__ = [
     # Fusion
     "FusionResult",
     "FusionStrategy",
+    "MeteorBlackDragonStrategy",
     "THTDFusionStrategy",
+    "DiscardAndCycleStrategy",
     "EquipBuffStrategy",
     "ElementalFusionStrategy",
     "HighestAtkStrategy",

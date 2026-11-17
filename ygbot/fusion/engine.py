@@ -14,7 +14,9 @@ from typing import List, Dict, Optional, Tuple, Union, Any
 from ..cards import Card, CardRegistry
 from .strategy import (
     FusionStrategy,
+    MeteorBlackDragonStrategy,
     THTDFusionStrategy,
+    DiscardAndCycleStrategy,
     EquipBuffStrategy,
     ElementalFusionStrategy,
     HighestAtkStrategy,
@@ -50,14 +52,18 @@ class FusionEngine:
         if name_clean == "highest_atk":
             return [
                 HighestAtkStrategy(),
+                MeteorBlackDragonStrategy(),
                 THTDFusionStrategy(),
+                DiscardAndCycleStrategy(),
                 EquipBuffStrategy(),
                 ElementalFusionStrategy(),
             ]
         
-        # Default: THTD speedrun & farming priority
+        # Default prioritized farming: Meteor Black Dragon -> THTD -> Discard/Cycle -> Secondary
         return [
+            MeteorBlackDragonStrategy(),
             THTDFusionStrategy(),
+            DiscardAndCycleStrategy(),
             EquipBuffStrategy(),
             ElementalFusionStrategy(),
             HighestAtkStrategy(),

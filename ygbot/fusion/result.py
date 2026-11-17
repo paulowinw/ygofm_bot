@@ -11,7 +11,7 @@ Provides 3-element tuple unpacking for full backward compatibility:
 """
 
 from dataclasses import dataclass
-from typing import List, Iterator, Any
+from typing import List, Iterator, Any, Optional
 
 
 @dataclass
@@ -22,6 +22,7 @@ class FusionResult:
     sequence: List[int]
     play_name: str
     estimated_atk: int
+    guardian_star: Optional[str] = None
 
     def __iter__(self) -> Iterator[Any]:
         """Allows unpacking: sequence, name, atk = result"""

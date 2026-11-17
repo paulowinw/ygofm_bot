@@ -136,6 +136,28 @@ class BoardInteraction:
 
         self.current_hand_slot = target_slot
 
+    def click_hand_card(self, slot_index: int) -> bool:
+        """Clicks the hand card directly in DOM to raise/lift it into the fusion queue."""
+        js = f"""
+        (() => {{
+            const cards = Array.from(document.querySelectorAll('img[alt]')).filter(img => {{
+                const r = img.getBoundingClientRect();
+                return r.y > window.innerHeight * 0.55 && r.height > 40 && img.alt && img.alt.trim();
+            }}).sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+
+            if (cards[{slot_index}]) {{
+                const target = cards[{slot_index}].closest('button') || cards[{slot_index}];
+                target.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        try:
+            return bool(self.cdp.eval_js(js))
+        except Exception:
+            return False
+
     def lift_card_for_fusion(self) -> None:
         """
         Presses [ArrowUp] to lift the currently focused card into the fusion queue.
@@ -146,9 +168,28 @@ class BoardInteraction:
     def trigger_fusion(self) -> None:
         """
         Confirms the fusion after lifting cards.
-        Presses [Enter] to initiate fusion calculation/animation.
+        Clicks the green checkmark [✔] confirmation button or presses [Enter].
         """
-        log("Triggering fusion: pressing [Enter]...", "FUSION")
+        log("Triggering fusion: clicking [✔] and pressing [Enter]...", "FUSION")
+        js_confirm = """
+        (() => {
+            const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                const text = b.innerText.trim();
+                const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                return text === '✔' || text.includes('✔') || aria.includes('confirm') || aria.includes('fuse');
+            });
+            if (btn) {
+                btn.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            self.cdp.eval_js(js_confirm)
+        except Exception:
+            pass
+
         self._press_key("Enter", delay_mult=1.5)
 
     def execute_fusion_sequence(self, sequence: List[int]) -> bool:
@@ -163,13 +204,14 @@ class BoardInteraction:
             log("Empty sequence provided, skipping fusion.", "WARN")
             return False
 
-        log(f"Executing keyboard fusion sequence: {[idx + 1 for idx in sequence]}", "FUSION")
+        log(f"Executing fusion sequence: {[idx + 1 for idx in sequence]}", "FUSION")
         
         # 1. Bring initial focus to hand
         self.focus_hand()
 
-        # 2. Lift each card in sequence
+        # 2. Lift each card in sequence using both DOM click and keyboard lift
         for card_idx in sequence:
+            self.click_hand_card(card_idx)
             self.navigate_to_hand_slot(card_idx)
             self.lift_card_for_fusion()
 
@@ -187,12 +229,29 @@ class BoardInteraction:
     def place_monster_on_field(self, target_zone: int = 2) -> None:
         """
         Navigates across monster field zones and places the summoned monster.
+        Clicks the zone marker circle in DOM (as seen in video) with keyboard fallback.
         
         Args:
             target_zone: Target player field zone (0..4, default 2: middle zone).
         """
         target_zone = max(0, min(4, target_zone))
         log(f"Selecting field zone {target_zone} for monster placement...", "DUEL")
+
+        js_zone = f"""
+        (() => {{
+            const zones = Array.from(document.querySelectorAll('.zone-marker-btn, [aria-label*="Select zone"]'));
+            if (zones.length > 0) {{
+                const target = zones[{target_zone}] || zones[0];
+                target.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        try:
+            self.cdp.eval_js(js_zone)
+        except Exception:
+            pass
 
         # Field navigation delta from initial placement cursor (defaults to middle zone 2)
         initial_cursor = 2
@@ -216,23 +275,40 @@ class BoardInteraction:
 
     def choose_guardian_star(self, choice: Union[int, str] = 1) -> None:
         """
-        Selects Guardian Star in modal prompt using keys '1' or '2'.
+        Selects Guardian Star in modal prompt using DOM click or keys '1' or '2'.
+        In the video, Meteor Black Dragon selects 'Sun' (Option 2), and THTD selects 'Pluto' (Option 1).
         
         Args:
-            choice: 1 or 'Pluto' / 'Mercury' / '1' / '2'.
-                   1 = First option (Primary).
-                   2 = Second option (Secondary).
+            choice: 1, 2, or name string ('Sun', 'Mars', 'Pluto', 'Mercury').
         """
-        # Normalize choice
-        if isinstance(choice, str):
-            c_lower = choice.lower().strip()
-            # If specified by star name (e.g. Pluto vs Mercury)
-            if c_lower in ("2", "second", "mercury", "right", "moon", "neptune"):
-                key = "2"
-            else:
-                key = "1"
+        star_str = str(choice).lower().strip()
+        js_click_star = f"""
+        (() => {{
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const target = buttons.find(b => {{
+                const txt = (b.innerText || '').toLowerCase();
+                const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                return txt.includes('{star_str}') || aria.includes('{star_str}');
+            }});
+            if (target) {{
+                target.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        try:
+            if self.cdp.eval_js(js_click_star):
+                log(f"Selected Guardian Star '{choice}' via DOM click.", "SUCCESS")
+                return
+        except Exception:
+            pass
+
+        # Normalize choice to key '1' or '2'
+        if star_str in ("2", "second", "sun", "mercury", "right", "moon", "neptune"):
+            key = "2"
         else:
-            key = "2" if choice == 2 else "1"
+            key = "1"
 
         log(f"Selecting Guardian Star option '{key}' via keyboard...", "INFO")
         self._press_key(key, delay_mult=1.0)
@@ -283,9 +359,24 @@ class BoardInteraction:
 
     def end_turn(self) -> None:
         """
-        Ends player turn by pressing the ['e'] key.
+        Ends player turn by clicking the 'End turn' button or pressing ['e'].
         Resets cursor tracking for next turn.
         """
-        log("Ending turn: pressing ['e']...", "DUEL")
+        log("Ending turn: clicking 'End turn' / pressing ['e']...", "DUEL")
+        js = """
+        (() => {
+            const btn = document.querySelector('.end-turn') || Array.from(document.querySelectorAll('button')).find(b => b.innerText.toLowerCase().includes('end turn'));
+            if (btn) {
+                btn.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            self.cdp.eval_js(js)
+        except Exception:
+            pass
+
         self._press_key("e", delay_mult=1.2)
         self.current_hand_slot = None

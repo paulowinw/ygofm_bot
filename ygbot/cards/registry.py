@@ -41,6 +41,9 @@ KNOWN_CARDS: Dict[str, Dict[str, Any]] = {
     "Thunder Dragon": {"type": TYPE_THUNDER, "atk": 1600, "def": 1500},
     "Oscillo Hero #2": {"type": TYPE_THUNDER, "atk": 1000, "def": 500},
     "The Immortal of Thunder": {"type": TYPE_THUNDER, "atk": 1500, "def": 1300},
+    "Wattkid": {"type": TYPE_THUNDER, "atk": 1000, "def": 500},
+    "Bolt Penguin": {"type": TYPE_THUNDER, "atk": 1100, "def": 800},
+    "Twin-Headed Thunder Dragon": {"type": TYPE_THUNDER, "atk": 2800, "def": 2100, "guardian_star": "Pluto"},
 
     # Dragons
     "Curse of Dragon": {"type": TYPE_DRAGON, "atk": 2000, "def": 1500},
@@ -52,8 +55,11 @@ KNOWN_CARDS: Dict[str, Dict[str, Any]] = {
     "One-Eyed Shield Dragon": {"type": TYPE_DRAGON, "atk": 700, "def": 1300},
     "B. Dragon Jungle King": {"type": TYPE_DRAGON, "atk": 2100, "def": 1800},
     "Red-Eyes B. Dragon": {"type": TYPE_DRAGON, "atk": 2400, "def": 2000},
+    "Red-Eyes Black Dragon": {"type": TYPE_DRAGON, "atk": 2400, "def": 2000},
     "Blue-Eyes White Dragon": {"type": TYPE_DRAGON, "atk": 3000, "def": 2500},
     "Meteor Dragon": {"type": TYPE_DRAGON, "atk": 1800, "def": 2000},
+    "Harpie's Pet Dragon": {"type": TYPE_DRAGON, "atk": 2000, "def": 2500},
+    "Meteor Black Dragon": {"type": TYPE_DRAGON, "atk": 3500, "def": 2000, "guardian_star": "Sun"},
     "Spike Seadra": {"type": TYPE_SEA_SERPENT, "atk": 1600, "def": 1300},
 
     # Equips

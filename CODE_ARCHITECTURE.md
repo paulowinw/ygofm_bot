@@ -60,10 +60,12 @@ flowchart TD
 * **Problem Solved:** Yu-Gi-Oh! Forbidden Memories has disparate fusion rules and playstyles. Combining all fusion logic in nested procedural `if/elif/else` statements violates the Open/Closed Principle (OCP), making it difficult to adjust priorities, add new fusions, or switch strategies (e.g. THTD speedrunning vs. highest ATK monster).
 * **Participants:**
   * **Strategy Interface (`FusionStrategy`):** Defines the abstract method `evaluate(hand: List[Card]) -> Optional[FusionResult]`.
-  * **Concrete Strategy 1 (`THTDFusionStrategy`):** Prioritizes the 2800+ ATK *Twin-Headed Thunder Dragon* combo (Thunder + Dragon), chaining additional dragons and compatible equip spells.
-  * **Concrete Strategy 2 (`EquipBuffStrategy`):** Identifies optimal monster targets for equip spells (*Shine Palace*, *Dragon Treasure*) and chains duplicate monsters for fusion stat boosts.
-  * **Concrete Strategy 3 (`ElementalFusionStrategy`):** Executes secondary classic fusions (*Dragon* + *Plant* $\rightarrow$ *Black Forest Dragon*, *Beast* + *Pyro* $\rightarrow$ *Flame Cerebrus*, *Rock* + *Female* $\rightarrow$ *Mystical Sand*).
-  * **Concrete Strategy 4 (`HighestAtkStrategy`):** Standalone fallback that plays the highest base attack monster in hand when no fusion recipe exists.
+  * **Concrete Strategy 1 (`MeteorBlackDragonStrategy`):** Highest priority summon (as seen in duel video). Combines *Red-Eyes B. Dragon* (2400 ATK) + *Meteor Dragon* (1800 ATK) $\rightarrow$ *Meteor Black Dragon* (3500 ATK), then chains compatible equip cards (*Dragon Treasure*) to reach 4000+ ATK (Guardian Star: *Sun*).
+  * **Concrete Strategy 2 (`THTDFusionStrategy`):** If no Meteor Black Dragon, fuses *Thunder* + *Dragon* $\rightarrow$ *Twin-Headed Thunder Dragon* (2800 ATK), chaining extra dragons and compatible equip spells (Guardian Star: *Pluto*).
+  * **Concrete Strategy 3 (`DiscardAndCycleStrategy`):** When no THTD or Meteor Black Dragon fusion exists, discards duplicate dragons, duplicate thunders, and extra equip cards (if $> 2$ equips) by burning them into the graveyard so that fresh cards are drawn next turn.
+  * **Concrete Strategy 4 (`EquipBuffStrategy`):** Identifies optimal monster targets for equip spells (*Shine Palace*, *Dragon Treasure*) and chains duplicate monsters for fusion stat boosts.
+  * **Concrete Strategy 5 (`ElementalFusionStrategy`):** Executes secondary classic fusions (*Dragon* + *Plant* $\rightarrow$ *Black Forest Dragon*, *Beast* + *Pyro* $\rightarrow$ *Flame Cerebrus*, *Rock* + *Female* $\rightarrow$ *Mystical Sand*).
+  * **Concrete Strategy 6 (`HighestAtkStrategy`):** Standalone fallback that plays the highest base attack monster in hand when no fusion recipe exists.
   * **Context (`FusionEngine`):** Coordinates strategy resolution. It maintains an ordered list of strategies and evaluates the hand against them sequentially until an optimal play is found.
 * **Open/Closed Principle:** New fusion strategies can be created by subclassing `FusionStrategy` and registered at runtime via `engine.register_strategy(new_strat, prepend=True)` without altering existing engine code.
 

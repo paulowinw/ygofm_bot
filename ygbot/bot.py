@@ -66,25 +66,26 @@ class YGBot:
         log(f"Hand cards: {', '.join(hand)}", "INFO")
         
         # 2. Compute best play
-        sequence, play_name, atk = self.fusion.solve_hand(hand)
+        result = self.fusion.solve_hand(hand)
+        sequence, play_name, atk = result
+        guardian_star = getattr(result, "guardian_star", None) or self.cfg.guardian_star
         log(f"Target play: {Colors.BOLD}{play_name}{Colors.END} (Est. ATK: {atk})", "FUSION")
         log(f"Playing card sequence: {[i+1 for i in sequence]}", "FUSION")
         
-        # 3. Execute keyboard fusion sequence on the board
-        # (Focus hand with ArrowDown, navigate with Left/Right, lift with ArrowUp, confirm with Enter)
+        # 3. Execute keyboard/DOM fusion sequence on the board
         self.game.board.execute_fusion_sequence(sequence)
         time.sleep(0.6)
 
         # 4. Check for Guardian Star prompt
         state = self.game.detect_screen_state()
         if state == GameState.GUARDIAN_STAR or True:
-            # Select guardian star via keyboard ('1' or '2')
-            self.game.choose_guardian_star(self.cfg.guardian_star)
+            # Select appropriate guardian star ('Sun' for Meteor Black Dragon, 'Pluto' for THTD)
+            self.game.choose_guardian_star(guardian_star)
         
         time.sleep(0.5)
 
-        # 5. Place monster on field via keyboard
-        self.game.confirm_monster_placement(preferred_zone=2)
+        # 5. Place monster on field (preferred zone 0 as seen in video)
+        self.game.confirm_monster_placement(preferred_zone=0)
         time.sleep(self.cfg.turn_wait)
         
         # 6. Execute combat / attacks

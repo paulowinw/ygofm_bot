@@ -126,6 +126,82 @@ class TestFusionStrategiesAndEngine(unittest.TestCase):
     def setUp(self):
         self.engine = FusionEngine(strategy="THTD")
 
+    def test_meteor_black_dragon_fusion_with_equip(self):
+        # Hand from user video:
+        # [0: Equip, 1: Red-Eyes B. Dragon, 2: Dragon Treasure, 3: Meteor Dragon, 4: Red-Eyes B. Dragon]
+        hand = [
+            "Shine Palace",          # idx 0
+            "Red-Eyes B. Dragon",    # idx 1
+            "Dragon Treasure",       # idx 2 (Equip for Dragon)
+            "Meteor Dragon",         # idx 3
+            "Red-Eyes B. Dragon"     # idx 4
+        ]
+        result = self.engine.solve_hand(hand)
+        seq, name, atk = result
+        self.assertEqual(name, "Meteor Black Dragon")
+        # In video: Red-Eyes first, Meteor Dragon second, then Dragon Treasure
+        self.assertEqual(seq[0], 1)
+        self.assertEqual(seq[1], 3)
+        self.assertIn(2, seq)        # Chained Dragon Treasure equip!
+        self.assertEqual(atk, 4000)  # 3500 base + 500 equip
+        self.assertEqual(result.guardian_star, "Sun")
+
+    def test_meteor_black_dragon_prioritized_over_thtd(self):
+        # Hand contains materials for BOTH Meteor Black Dragon and THTD
+        hand = [
+            "Meteor Dragon",
+            "Red-Eyes B. Dragon",
+            "Bolt Escargot",         # Thunder
+            "Curse of Dragon",       # Dragon
+            "Dragon Treasure"
+        ]
+        result = self.engine.solve_hand(hand)
+        self.assertEqual(result.play_name, "Meteor Black Dragon")
+        self.assertGreaterEqual(result.estimated_atk, 3500)
+
+    def test_discard_repeated_dragons_when_no_thtd(self):
+        # Hand has 3 dragons, no thunder, 1 equip
+        hand = [
+            "Curse of Dragon",  # 2000 ATK (idx 0)
+            "Baby Dragon",      # 1200 ATK (idx 1)
+            "Petit Dragon",     # 600 ATK (idx 2)
+            "Dragon Treasure",  # Equip (idx 3)
+            "Silver Fang"       # Beast (idx 4)
+        ]
+        result = self.engine.solve_hand(hand)
+        # Should discard Petit Dragon and Baby Dragon, keeping Curse of Dragon
+        self.assertIn("Discard", result.play_name)
+        self.assertIn(1, result.sequence)
+        self.assertIn(2, result.sequence)
+        self.assertIn(0, result.sequence)  # Keeper placed at end of sequence
+
+    def test_discard_repeated_thunders_when_no_dragon(self):
+        # Hand has 3 thunders, no dragon
+        hand = [
+            "Kaminari Attack",  # 1900 ATK (idx 0)
+            "Bolt Escargot",    # 1400 ATK (idx 1)
+            "Lala Li-Oon",      # 600 ATK (idx 2)
+            "Silver Fang",      # Beast (idx 3)
+            "White Dolphin"     # Aqua (idx 4)
+        ]
+        result = self.engine.solve_hand(hand)
+        self.assertIn("Discard", result.play_name)
+        self.assertIn(1, result.sequence)
+        self.assertIn(2, result.sequence)
+
+    def test_discard_extra_equips_over_two(self):
+        # Hand has 3 equips, 1 dragon
+        hand = [
+            "Dragon Treasure",  # idx 0
+            "Dragon Treasure",  # idx 1
+            "Dragon Treasure",  # idx 2 (extra equip)
+            "Curse of Dragon",  # idx 3
+            "Silver Fang"       # idx 4
+        ]
+        result = self.engine.solve_hand(hand)
+        self.assertIn("Discard", result.play_name)
+        self.assertIn(2, result.sequence)  # 3rd equip discarded
+
     def test_thtd_strategy_execution(self):
         # Hand with Thunder and Dragon
         hand = [

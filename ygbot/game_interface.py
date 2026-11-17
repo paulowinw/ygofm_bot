@@ -118,29 +118,43 @@ class GameInterface:
 
     def read_hand_cards(self) -> List[str]:
         """
-        Attempts to read cards currently in the player's hand via DOM.
-        If cards cannot be extracted from DOM (e.g. WebGL Canvas), returns
-        heuristic deck cards that prioritize the user's THTD strategy.
+        Reads the cards currently in the player's hand directly from the live DOM.
+        Sorts cards from left to right by x-coordinate to ensure accurate slot indexing (0..4).
         """
         js = """
         (() => {
-            // Check for card elements with aria-label, title, or text
-            const cardNodes = Array.from(document.querySelectorAll('[data-card-name], .card-name, .hand-card, [title]'));
-            if (cardNodes.length >= 5) {
-                return cardNodes.slice(0, 5).map(c => c.getAttribute('data-card-name') || c.getAttribute('title') || c.innerText.trim());
+            // 1. Query loaded hand card images in bottom 45% of viewport
+            const imgs = Array.from(document.querySelectorAll('img[alt]')).filter(img => {
+                const r = img.getBoundingClientRect();
+                return r.y > window.innerHeight * 0.55 && r.height > 40 && img.alt && img.alt.trim();
+            });
+            imgs.sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+            if (imgs.length > 0) {
+                return imgs.map(img => img.alt.trim());
             }
+
+            // 2. Query hand card buttons in bottom 45% of viewport
+            const btns = Array.from(document.querySelectorAll('button')).filter(b => {
+                const r = b.getBoundingClientRect();
+                const text = b.getAttribute('aria-label') || b.innerText.trim();
+                return r.y > window.innerHeight * 0.55 && r.height > 40 && text && !text.toUpperCase().includes('END TURN') && !text.toUpperCase().includes('CANCEL');
+            });
+            btns.sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+            if (btns.length > 0) {
+                return btns.map(b => b.getAttribute('aria-label') || b.innerText.trim());
+            }
+
             return null;
         })()
         """
         try:
             detected = self.cdp.eval_js(js)
-            if detected and len(detected) == 5:
+            if detected and len(detected) > 0:
                 return detected
-        except Exception:
-            pass
+        except Exception as e:
+            log(f"Error reading hand cards via DOM: {e}", "WARN")
 
-        # Return classic THTD-oriented hand as default for FM farming
-        # (Thunder monster, Dragon monsters, Equips)
+        # Fallback hand for simulation or when hand is empty
         return [
             "Bolt Escargot",
             "Kaminari Attack",
@@ -150,7 +164,31 @@ class GameInterface:
         ]
 
     def select_card_slot(self, slot_index: int):
-        """Clicks a card in hand (slot_index: 0 to 4)."""
+        """Clicks a card in hand (slot_index: 0 to 4) via DOM element click with coordinate fallback."""
+        js_click = f"""
+        (() => {{
+            const cards = Array.from(document.querySelectorAll('img[alt]')).filter(img => {{
+                const r = img.getBoundingClientRect();
+                return r.y > window.innerHeight * 0.55 && r.height > 40 && img.alt && img.alt.trim();
+            }}).sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+
+            if (cards[{slot_index}]) {{
+                const target = cards[{slot_index}].closest('button') || cards[{slot_index}];
+                target.click();
+                return true;
+            }}
+            return false;
+        }})()
+        """
+        try:
+            clicked = self.cdp.eval_js(js_click)
+            if clicked:
+                time.sleep(self.cfg.action_delay)
+                return
+        except Exception:
+            pass
+
+        # Coordinate fallback
         if 0 <= slot_index < len(self.cfg.hand_cards):
             coords = self.cfg.hand_cards[slot_index]
             self.cdp.click_percent(coords[0], coords[1])
@@ -186,33 +224,62 @@ class GameInterface:
 
     def perform_attack_sequence(self):
         """
-        Executes attacks with field monsters against opponent.
-        Iterates across player monster zones and targets opponent zones / direct attack.
+        Executes attacks with field monsters as demonstrated in the duel video:
+        1. Clicks the player's monster on field to open the action menu.
+        2. Clicks the 'ATTACK' action button.
+        3. Targets the opponent's monster zone or direct LP zone to strike.
         """
         log("Executing Battle Phase / Attacks...", "DUEL")
         
-        # Check if combat button is available and click it
-        self.cdp.click_element_by_text("COMBAT")
-        bx, by = self.cfg.combat_button
-        self.cdp.click_percent(bx, by)
+        # 1. Click player monster on field
+        js_click_monster = """
+        (() => {
+            const monster = document.querySelector('.board-card-main, [aria*="Dragon"], [aria*="Thunder"]');
+            if (monster) {
+                monster.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            self.cdp.eval_js(js_click_monster)
+        except Exception:
+            pass
+        
+        # Coordinate click player zone fallback
+        p_coord = self.cfg.player_zones[2]
+        self.cdp.click_percent(p_coord[0], p_coord[1])
         time.sleep(0.4)
 
-        # Attack with player's active monster zones (Zones 1, 2, 3)
-        for zone_idx in [1, 2, 3, 0, 4]:
-            p_coord = self.cfg.player_zones[zone_idx]
-            # Click player monster
-            self.cdp.click_percent(p_coord[0], p_coord[1], delay=0.08)
-            time.sleep(0.2)
-            
-            # Click opponent target (Opponent monster zone 1-3 or direct attack)
-            o_coord = self.cfg.opponent_zones[zone_idx] if zone_idx < len(self.cfg.opponent_zones) else self.cfg.opponent_direct
-            self.cdp.click_percent(o_coord[0], o_coord[1], delay=0.08)
-            time.sleep(0.3)
-            
-            # Also click opponent direct center to ensure hit connects
-            self.cdp.click_percent(self.cfg.opponent_direct[0], self.cfg.opponent_direct[1], delay=0.08)
-            time.sleep(0.2)
+        # 2. Click "ATTACK" button in card interaction modal
+        if self.cdp.click_element_by_text("ATTACK"):
+            log("Selected 'ATTACK' action button.", "COMBAT")
+            time.sleep(0.4)
+        else:
+            # Fallback via keyboard Enter
+            self.cdp.send_key("Enter", delay=0.08)
+            time.sleep(0.4)
 
+        # 3. Target opponent's card or direct LP
+        js_click_target = """
+        (() => {
+            const oppCard = document.querySelector('.slot-opponent, .board-card-opponent, [aria*="opponent"]');
+            if (oppCard) {
+                oppCard.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            self.cdp.eval_js(js_click_target)
+        except Exception:
+            pass
+
+        # Click direct center on opponent's field
+        self.cdp.click_percent(self.cfg.opponent_direct[0], self.cfg.opponent_direct[1])
+        self.cdp.send_key("Enter", delay=0.08)
         time.sleep(self.cfg.combat_wait)
 
     def click_duel_again(self) -> bool:
@@ -220,7 +287,24 @@ class GameInterface:
         log("Victory achieved! Clicking 'DUEL AGAIN'...", "SUCCESS")
         time.sleep(0.8)
 
-        # 1. Try DOM element
+        js = """
+        (() => {
+            const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('DUEL AGAIN'));
+            if (btn) {
+                btn.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            if self.cdp.eval_js(js):
+                log("Clicked 'DUEL AGAIN' via JS .click().", "SUCCESS")
+                return True
+        except Exception:
+            pass
+
+        # 1. Try DOM element text search
         if self.cdp.click_element_by_text("DUEL AGAIN"):
             log("Clicked 'DUEL AGAIN' via DOM.", "SUCCESS")
             return True
