@@ -4,8 +4,8 @@ Unit tests for BoardInteraction controller and keyboard navigation command logic
 
 import unittest
 from unittest.mock import MagicMock
-from ygbot.board_interaction import BoardInteraction
-from ygbot.config import Config
+from ygbot.pages.game_board_page import GameBoardPage as BoardInteraction, GameState
+from ygbot.core.config import Config
 
 
 class DummyCDPClient:
@@ -152,7 +152,7 @@ class TestCardDetailsAndScreenStates(unittest.TestCase):
     """Verifies state detection and handling for Card Details and Surrender modals."""
 
     def setUp(self):
-        from ygbot.game_interface import GameInterface, GameState
+        GameInterface = BoardInteraction
         self.GameState = GameState
         self.mock_cdp = DummyCDPClient()
         self.cfg = Config()

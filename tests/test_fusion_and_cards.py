@@ -4,7 +4,7 @@ Fusion Strategies, and FusionEngine.
 """
 
 import unittest
-from ygbot.cards import (
+from ygbot.features.cards import (
     CardType,
     Card,
     MonsterCard,
@@ -15,7 +15,7 @@ from ygbot.cards import (
     TYPE_DRAGON,
     TYPE_THUNDER,
 )
-from ygbot.fusion import (
+from ygbot.features.fusion import (
     FusionEngine,
     FusionResult,
     THTDFusionStrategy,

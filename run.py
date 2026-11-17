@@ -10,10 +10,10 @@ import argparse
 import subprocess
 import time
 
-from ygbot.config import Config
+from ygbot.core.config import Config
 from ygbot.bot import YGBot
-from ygbot.cdp_client import CDPClient
-from ygbot.utils import print_banner, log, Colors
+from ygbot.core.cdp_client import CDPClient
+from ygbot.core.utils import print_banner, log, Colors
 
 def launch_chrome_process(binary: str = "google-chrome", port: int = 9222, url: str = "https://ygofm.com/", user_data_dir: str = None):
     """Launches Google Chrome with remote debugging enabled."""
