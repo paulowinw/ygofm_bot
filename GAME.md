@@ -48,12 +48,12 @@ The web version of Forbidden Memories Online accepts direct keyboard controls. T
 
 ### Turn Interaction Walkthrough:
 1. **Focus Hand:** Press `ArrowDown` at the start of your turn to focus the first card (Slot 0).
-2. **Select Materials:** Navigate between cards 0 to 4 using `ArrowLeft` and `ArrowRight`.
-3. **Queue Fusion:** When hovering over a card you wish to fuse, press `ArrowUp`. The card is lifted into the fusion queue.
-4. **Trigger Fusion:** After lifting all fusion components, press `Enter` (or press `ArrowDown` to navigate to the fusion button, then press `Enter`).
+2. **Select Materials & Card Details:** Navigate between cards 0 to 4 using `ArrowLeft` and `ArrowRight`. Clicking or focusing a card opens its **Card Details** modal window (displaying ATK, DEF, Guardian Stars, and action buttons).
+3. **Queue Fusion via Card Details:** On the Card Details window, press `ArrowDown` to navigate focus down to the **FUSION** action button (`data-testid="summon-chain"`), then press `Enter` (or click `[ ⚡ FUSION ]`). This queues the card as a fusion component and returns to the hand.
+4. **Trigger Fusion:** After queuing all required fusion components (e.g., Red-Eyes Black Dragon + Meteor Dragon), click the green checkmark `[ ✔ ]` or press `Enter` to initiate the fusion sequence.
 5. **Guardian Star Modal:** When prompted to pick a Guardian Star:
-   * Press `1` for the left/primary star.
-   * Press `2` for the right/secondary star.
+   * Press `1` for the left/primary star (e.g. Pluto for THTD).
+   * Press `2` for the right/secondary star (e.g. Sun for Meteor Black Dragon).
 6. **Field Placement:** Use `ArrowLeft` / `ArrowRight` to select a monster zone (0 to 4), then press `Enter` to confirm placement.
 7. **Combat / Attacking:**
    * Focus your monster on the field.
@@ -62,6 +62,7 @@ The web version of Forbidden Memories Online accepts direct keyboard controls. T
    * Navigate with `ArrowLeft` / `ArrowRight` to target an opponent's monster or direct LP.
    * Press `Enter` to strike!
 8. **End Turn:** Press `e` to pass the turn to the opponent.
+9. **Surrender Safety:** If an accidental concession dialog ("CONCEDE THIS MATCH NOW?") is detected, the bot immediately triggers `Cancel` to prevent forfeiting matches.
 
 ---
 

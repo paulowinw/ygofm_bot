@@ -161,9 +161,130 @@ class BoardInteraction:
     def lift_card_for_fusion(self) -> None:
         """
         Presses [ArrowUp] to lift the currently focused card into the fusion queue.
+        (Legacy PS1 keyboard navigation command).
         """
         log(f"Lifting card at slot {self.current_hand_slot} for fusion [ArrowUp]...", "FUSION")
         self._press_key("ArrowUp", delay_mult=0.9)
+
+    def select_fusion_on_card_details(self) -> bool:
+        """
+        Handles selecting fusion on the Card Details screen.
+        
+        When the card details screen is open:
+        1. Action: Presses [ArrowDown] to move cursor focus down from the card
+           to the fusion action button at the bottom of the card details window.
+        2. Clicks the FUSION button (data-testid='summon-chain', .desktop-duel-action--green,
+           or button containing 'FUSION') in DOM.
+        3. Presses [Enter] to confirm/select the fusion action via keyboard.
+        
+        Returns:
+            bool: True if fusion was selected on the card details screen.
+        """
+        log("Card details screen: pressing [ArrowDown] and selecting FUSION...", "FUSION")
+        
+        # 1. Action: ArrowDown (navigates down to fusion on the card details screen)
+        self._press_key("ArrowDown", delay_mult=0.8)
+
+        # 2. Perform DOM click on FUSION button
+        js_fusion = """
+        (() => {
+            const chainBtn = document.querySelector('[data-testid="summon-chain"]');
+            if (chainBtn && !chainBtn.disabled) {
+                chainBtn.click();
+                return true;
+            }
+            const greenBtn = document.querySelector('.desktop-duel-action--green');
+            if (greenBtn && !greenBtn.disabled) {
+                greenBtn.click();
+                return true;
+            }
+            const btns = Array.from(document.querySelectorAll('button'));
+            const fusionBtn = btns.find(b => {
+                const txt = (b.innerText || '').toUpperCase();
+                const aria = (b.getAttribute('aria-label') || '').toUpperCase();
+                const testid = (b.getAttribute('data-testid') || '').toUpperCase();
+                return (txt.includes('FUSION') || aria.includes('FUSION') || testid.includes('CHAIN')) && !b.disabled;
+            });
+            if (fusionBtn) {
+                fusionBtn.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            if self.cdp.eval_js(js_fusion):
+                log("Selected 'FUSION' on card details screen via DOM click.", "SUCCESS")
+        except Exception:
+            pass
+
+        # 3. Dispatches Enter to confirm fusion via keyboard
+        log("Confirming fusion on card details screen [Enter]...", "FUSION")
+        self._press_key("Enter", delay_mult=1.0)
+        return True
+
+    def is_card_details_open(self) -> bool:
+        """
+        Checks whether the Card Details modal/screen is currently displayed.
+        """
+        js_check = """
+        (() => {
+            const hasActionGroup = !!document.querySelector('.desktop-duel-action-group, [data-testid="summon-chain"], .desktop-duel-action--green');
+            const hasActions = document.querySelectorAll('.desktop-duel-action, [data-testid^="summon-"]').length > 0;
+            const hasModal = !!document.querySelector('.card-detail, [role="dialog"]:not([data-testid="zone-selector"])');
+            return hasActionGroup || hasActions || hasModal;
+        })()
+        """
+        try:
+            return bool(self.cdp.eval_js(js_check))
+        except Exception:
+            return False
+
+    def is_fusion_selected_on_card_details(self) -> bool:
+        """
+        Verifies if fusion has been selected on the card details screen.
+        Checks for queued fusion badges or activated fusion controls in DOM.
+        """
+        js_verify = """
+        (() => {
+            const badges = document.querySelectorAll('.hand-card-quick-fusion-mark, [data-testid="memories-effect-badge"], .hand-card-quick-btn--fusion, [data-gamepad-fusion-confirm], [data-testid="memories-fusion-hand-controls"]');
+            if (badges.length > 0) return true;
+            const chainBtn = document.querySelector('[data-testid="summon-chain"]');
+            return chainBtn !== null;
+        })()
+        """
+        try:
+            return bool(self.cdp.eval_js(js_verify))
+        except Exception:
+            return False
+
+    def dismiss_surrender_modal(self) -> bool:
+        """
+        Safety check: If the concede/surrender modal was accidentally opened,
+        dismiss/cancel it immediately by clicking Cancel or pressing Escape.
+        """
+        js_cancel = """
+        (() => {
+            const btns = Array.from(document.querySelectorAll('button'));
+            const cancelBtn = btns.find(b => {
+                const txt = (b.innerText || '').trim().toLowerCase();
+                const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+                return (txt === 'cancel' || aria === 'cancel' || b.hasAttribute('data-gamepad-cancel')) && !txt.includes('concede');
+            });
+            if (cancelBtn) {
+                cancelBtn.click();
+                return true;
+            }
+            return false;
+        })()
+        """
+        try:
+            if self.cdp.eval_js(js_cancel):
+                log("Accidental surrender prompt detected and cancelled!", "WARN")
+                return True
+        except Exception:
+            pass
+        return False
 
     def trigger_fusion(self) -> None:
         """
@@ -194,8 +315,13 @@ class BoardInteraction:
 
     def execute_fusion_sequence(self, sequence: List[int]) -> bool:
         """
-        High-level orchestrator: Lifts cards in the exact order specified by sequence,
+        High-level orchestrator: Queues cards in the exact order specified by sequence,
         then starts the fusion.
+        
+        For each card in sequence:
+        1. Navigates to hand slot and opens card details screen (via DOM click).
+        2. On the card details screen: presses [ArrowDown] and selects FUSION (via DOM and [Enter]).
+        3. After all cards are queued, confirms and triggers the fusion.
         
         Args:
             sequence: List of hand card indices in the order they must fuse (e.g. [0, 1]).
@@ -206,14 +332,17 @@ class BoardInteraction:
 
         log(f"Executing fusion sequence: {[idx + 1 for idx in sequence]}", "FUSION")
         
+        # 0. Safety: dismiss any surrender modal if accidentally opened
+        self.dismiss_surrender_modal()
+
         # 1. Bring initial focus to hand
         self.focus_hand()
 
-        # 2. Lift each card in sequence using both DOM click and keyboard lift
+        # 2. Select each card in sequence and trigger fusion on card details screen
         for card_idx in sequence:
-            self.click_hand_card(card_idx)
             self.navigate_to_hand_slot(card_idx)
-            self.lift_card_for_fusion()
+            self.click_hand_card(card_idx)
+            self.select_fusion_on_card_details()
 
         if self.key_delay > 0:
             time.sleep(self.key_delay * 0.8)

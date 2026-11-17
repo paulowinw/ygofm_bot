@@ -14,6 +14,8 @@ class GameState:
     UNKNOWN = "UNKNOWN"
     LOBBY = "LOBBY"
     LOADING = "LOADING"
+    CARD_DETAILS = "CARD_DETAILS"
+    SURRENDER_PROMPT = "SURRENDER_PROMPT"
     GUARDIAN_STAR = "GUARDIAN_STAR"
     IN_DUEL = "IN_DUEL"
     VICTORY = "VICTORY"
@@ -41,6 +43,18 @@ class GameInterface:
                 }
                 if (text.includes('DEFEAT') || text.includes('YOU LOST')) {
                     return 'DEFEAT';
+                }
+                
+                // Check for Concede / Surrender Confirmation Modal
+                if (text.includes('CONCEDE THIS MATCH NOW') || text.includes('SURRENDERED MATCHES GRANT NO REWARD')) {
+                    return 'SURRENDER_PROMPT';
+                }
+
+                // Check for Card Details Modal / Screen
+                const hasActionGroup = !!document.querySelector('.desktop-duel-action-group, [data-testid="summon-chain"], .desktop-duel-action--green');
+                const hasAtkDef = document.querySelectorAll('[data-testid="summon-atk"], [data-testid="summon-def-faceup"]').length > 0;
+                if (hasActionGroup || hasAtkDef) {
+                    return 'CARD_DETAILS';
                 }
                 
                 // Check for Guardian Star Selection Modal
@@ -222,6 +236,22 @@ class GameInterface:
             coords = self.cfg.player_zones[preferred_zone]
             self.cdp.click_percent(coords[0], coords[1])
 
+    def is_card_details_open(self) -> bool:
+        """Checks if the Card Details screen is currently displayed."""
+        return self.board.is_card_details_open()
+
+    def select_fusion_on_card_details(self) -> bool:
+        """Selects fusion on the Card Details screen."""
+        return self.board.select_fusion_on_card_details()
+
+    def is_fusion_selected_on_card_details(self) -> bool:
+        """Verifies if fusion has been selected on the card details screen."""
+        return self.board.is_fusion_selected_on_card_details()
+
+    def dismiss_surrender_modal(self) -> bool:
+        """Dismisses the surrender prompt if accidentally opened."""
+        return self.board.dismiss_surrender_modal()
+
     def perform_attack_sequence(self):
         """
         Executes attacks with field monsters as demonstrated in the duel video:
@@ -229,6 +259,14 @@ class GameInterface:
         2. Clicks the 'ATTACK' action button.
         3. Targets the opponent's monster zone or direct LP zone to strike.
         """
+        # Guard: do not perform attack if card details or surrender modal is open
+        if self.is_card_details_open():
+            log("Card details open, skipping attack sequence.", "WARN")
+            return
+        if self.detect_screen_state() == GameState.SURRENDER_PROMPT:
+            self.dismiss_surrender_modal()
+            return
+
         log("Executing Battle Phase / Attacks...", "DUEL")
         
         # 1. Click player monster on field

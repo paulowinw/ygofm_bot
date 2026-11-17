@@ -178,11 +178,13 @@ stateDiagram-v2
     | :--- | :--- | :--- |
     | `focus_hand()` | `ArrowDown` | Moves initial cursor focus to the 1st card in hand (slot 0) |
     | `navigate_to_hand_slot(i)` | `ArrowLeft` / `ArrowRight` | Navigates across the 5 hand slots (0 to 4) |
-    | `lift_card_for_fusion()` | `ArrowUp` | Moves the focused card up into the fusion queue |
-    | `trigger_fusion()` | `Enter` | Starts the fusion animation and calculation |
+    | `select_fusion_on_card_details()` | `ArrowDown` $\rightarrow$ `Enter` | On Card Details screen, navigates down to FUSION button and confirms selection |
+    | `lift_card_for_fusion()` | `ArrowUp` | Moves the focused card up into the fusion queue (PS1 legacy) |
+    | `trigger_fusion()` | `Enter` / `[ ✔ ]` | Starts the fusion animation and calculation |
     | `place_monster_on_field(z)` | `ArrowLeft`/`ArrowRight` + `Enter` | Navigates across the 5 monster zones and confirms summon |
     | `choose_guardian_star(opt)` | `'1'` (Primary) / `'2'` (Secondary) | Selects the Guardian Star in the modal prompt (e.g. Pluto vs Mercury) |
     | `execute_attack(p_zone, o_zone)` | `Enter` $\rightarrow$ Attack $\rightarrow$ `Enter` | Opens card interaction menu, selects Attack, and confirms target |
+    | `dismiss_surrender_modal()` | `Cancel` / `Escape` | Dismisses accidental surrender prompts to prevent match forfeits |
     | `end_turn()` | `'e'` | Ends the player's turn immediately |
   * **Dual-Layer CDP Keyboard Dispatch:** `CDPClient.send_key()` issues native Chrome DevTools Protocol `Input.dispatchKeyEvent` events (`rawKeyDown`, `char`, `keyUp`) accompanied by simulated DOM `KeyboardEvent` dispatches on the active element/canvas.
 
@@ -250,9 +252,11 @@ sequenceDiagram
 
     Bot->>Board: execute_fusion_sequence(sequence=[0, 1])
     Board->>CDP: send_key("ArrowDown") [Focus Hand Slot 0]
-    Board->>CDP: send_key("ArrowUp") [Lift Slot 0 into Fusion]
+    Board->>CDP: eval_js("click_hand_card(0)") [Open Card 0 Details]
+    Board->>CDP: send_key("ArrowDown") + send_key("Enter") [Select FUSION on Card Details]
     Board->>CDP: send_key("ArrowRight") [Navigate to Slot 1]
-    Board->>CDP: send_key("ArrowUp") [Lift Slot 1 into Fusion]
+    Board->>CDP: eval_js("click_hand_card(1)") [Open Card 1 Details]
+    Board->>CDP: send_key("ArrowDown") + send_key("Enter") [Select FUSION on Card Details]
     Board->>CDP: send_key("Enter") [Trigger Fusion]
     CDP->>Chrome: Input.dispatchKeyEvent
 

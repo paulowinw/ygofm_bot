@@ -59,6 +59,9 @@ class YGBot:
 
     def run_duel_turn(self):
         """Executes a single turn in an active duel."""
+        # 0. Safety: dismiss any surrender modal if accidentally opened
+        self.game.dismiss_surrender_modal()
+
         log("Turn active. Inspecting hand cards...", "DUEL")
         
         # 1. Read hand cards
@@ -76,23 +79,30 @@ class YGBot:
         self.game.board.execute_fusion_sequence(sequence)
         time.sleep(0.6)
 
-        # 4. Check for Guardian Star prompt
+        # 4. Check for Guardian Star prompt or Card Details recovery
         state = self.game.detect_screen_state()
-        if state == GameState.GUARDIAN_STAR or True:
+        if state == GameState.GUARDIAN_STAR:
             # Select appropriate guardian star ('Sun' for Meteor Black Dragon, 'Pluto' for THTD)
             self.game.choose_guardian_star(guardian_star)
-        
-        time.sleep(0.5)
+            time.sleep(0.5)
+        elif state == GameState.CARD_DETAILS:
+            log("Still at Card Details screen after fusion sequence. Selecting FUSION to recover...", "WARN")
+            self.game.select_fusion_on_card_details()
+            time.sleep(0.5)
+            return
 
         # 5. Place monster on field (preferred zone 0 as seen in video)
-        self.game.confirm_monster_placement(preferred_zone=0)
-        time.sleep(self.cfg.turn_wait)
+        if self.game.detect_screen_state() not in (GameState.CARD_DETAILS, GameState.SURRENDER_PROMPT):
+            self.game.confirm_monster_placement(preferred_zone=0)
+            time.sleep(self.cfg.turn_wait)
         
         # 6. Execute combat / attacks
-        self.game.perform_attack_sequence()
+        if self.game.detect_screen_state() not in (GameState.CARD_DETAILS, GameState.SURRENDER_PROMPT):
+            self.game.perform_attack_sequence()
 
         # 7. End turn with 'e' key
-        self.game.board.end_turn()
+        if self.game.detect_screen_state() not in (GameState.SURRENDER_PROMPT,):
+            self.game.board.end_turn()
 
     def start_farming(self):
         """Starts the autonomous farming loop."""
@@ -124,6 +134,18 @@ class YGBot:
 
                 elif state == GameState.GUARDIAN_STAR:
                     self.game.choose_guardian_star(self.cfg.guardian_star)
+                    time.sleep(1.0)
+                    consecutive_idle = 0
+
+                elif state == GameState.SURRENDER_PROMPT:
+                    log("Detected surrender prompt! Cancelling to prevent forfeit...", "WARN")
+                    self.game.dismiss_surrender_modal()
+                    time.sleep(1.0)
+                    consecutive_idle = 0
+
+                elif state == GameState.CARD_DETAILS:
+                    log("Detected Card Details screen in main loop. Selecting FUSION...", "WARN")
+                    self.game.select_fusion_on_card_details()
                     time.sleep(1.0)
                     consecutive_idle = 0
 
