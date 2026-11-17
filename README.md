@@ -179,85 +179,105 @@ Persistent options can also be edited directly in [config.json](file:///home/pau
 ├── .env                       # Environment configuration (target URL, ports, opponent)
 ├── .env.example               # Template for environment configuration
 ├── config.json                # User settings (opponent, strategy, speed, coordinates)
-├── run.py                     # Command-line entry point
+├── run.py                     # CLI entry point (Index)
 ├── launch_chrome.sh           # Helper script to start Chrome with debugging
 ├── requirements.txt           # Optional dependencies (core bot needs 0 external packages)
 ├── tests/
+│   ├── test_page_actions.py   # Unit test suite for Page Actions, hand table printing & fusion logging
 │   ├── test_fusion_and_cards.py    # Unit test suite for cards, registry, and fusion strategies
-│   └── test_board_interaction.py   # Unit test suite for keyboard navigation and board controller
+│   ├── test_board_interaction.py   # Unit test suite for keyboard navigation and board controller
+│   ├── test_pom_and_middleware.py  # Unit test suite for POM and middleware pipeline
+│   └── test_separated_strategies.py # Unit test suite for isolated fusion strategies
 └── ygbot/
-    ├── __init__.py            # Package declaration
-    ├── bot.py                 # Core state machine & autonomous farming controller
-    ├── board_interaction.py   # Board Controller (Keyboard navigation & Command Pattern)
-    ├── cdp_client.py          # Zero-dependency Chrome DevTools Protocol client
-    ├── config.py              # Configuration dataclass and JSON loader
-    ├── game_interface.py      # In-game screen state detection and action executor
-    ├── fusion_engine.py       # Backward-compatibility facade
-    ├── utils.py               # Console formatting, ANSI colors, duration and logging helpers
-    ├── vision_fallback.py     # Desktop mouse / screen clicker fallback
-    ├── cards/                 # Domain package for Cards & Card Types
-    │   ├── card_type.py       # CardType Enum (Dragon, Thunder, Equip, Spell)
-    │   ├── models.py          # Card, MonsterCard, EquipCard, SpellCard domain models
-    │   └── registry.py        # CardRegistry (Factory Method & card database)
-    └── fusion/                # Strategy Pattern package for Fusion Logic
-        ├── strategy.py        # FusionStrategy ABC & concrete strategies (THTD, Equip, etc.)
-        ├── engine.py          # FusionEngine Context class
-        └── result.py          # FusionResult Value Object (supports tuple unpacking)
+    ├── __init__.py            # Package declaration & exports
+    ├── bot.py                 # Main Orchestration Loop (Runner)
+    ├── actions/               # Discrete steps (Action Sequencer Pattern organized by page)
+    │   ├── base_action.py     # Base contract for page actions
+    │   ├── lobby/             # Actions executed on LobbyPage
+    │   │   └── start_duel_action.py   # Selects opponent & clicks START DUEL
+    │   └── game_board/        # Actions executed on GameBoardPage
+    │       ├── inspect_hand_action.py # Clicks cards one by one on initial open, stores in variable, prints table
+    │       ├── fusion_action.py       # Main fusion logic: solves hand via strategies, executes fusion, logs stats
+    │       ├── summon_action.py       # Guardian Star selection & monster field placement
+    │       ├── attack_action.py       # Initiates combat attacks
+    │       └── end_turn_action.py     # Ends turn safely ('e' key)
+    ├── pages/                 # Page Object Model (Chrome DOM / Canvas wrappers)
+    │   ├── base_page.py       # Low-level browser primitives wrapped with middleware
+    │   ├── lobby_page.py      # Lobby screen and matchmaking DOM interactions
+    │   └── game_board_page.py # Duel arena layout, hand slots, and field zones
+    ├── core/                  # Low-level browser protocol, config, logger & vision fallback
+    │   ├── cdp/               # Decoupled CDP Subsystems (Facade Pattern)
+    │   │   ├── transport.py   # Raw TCP socket & RFC 6455 WebSocket framing
+    │   │   ├── session.py     # Tab querying, WebSocket lifecycle, & JSON-RPC
+    │   │   ├── input.py       # Mouse clicks & physical/synthetic keyboard dispatching
+    │   │   ├── dom.py         # Viewport sizing, JS evaluation, & DOM queries
+    │   │   └── client.py      # The Facade (CDPClient / BrowserDriver)
+    │   ├── cdp_client.py      # Backward-compatibility facade
+    │   ├── vision_fallback.py # Coordinate & vision matching fallback
+    │   ├── middleware.py      # Execution pipeline (logging, error capture, delays, fallback)
+    │   ├── config.py          # Configuration loader (.env and config.json)
+    │   └── utils.py           # Logger, ANSI colors, duration formatter, and ASCII card table
+    └── features/              # Pure Domain Logic (Cards & Fusion Strategies)
+        ├── cards/             # Domain models, known cards catalog & CardRegistry
+        └── fusion/            # Fusion strategies & supporting classes ONLY (No engine class)
+            ├── strategy.py    # FusionStrategy interface & coordinator
+            ├── result.py      # FusionResult Value Object
+            └── strategies/    # Isolated concrete strategy implementations (THTD, Meteor Black Dragon, etc.)
 ```
 
 ---
 
 ## 2. Module Responsibilities
 
-### `run.py`
-The CLI entry point. Parses command-line arguments, prints the terminal banner, handles the `--test` diagnostic flag, optionally spawns Chrome, and initializes `YGBot`.
+### `run.py` (CLI Index)
+The CLI entry point. Parses command-line arguments, prints the terminal banner, handles the `--test` diagnostic flag, optionally spawns Chrome, and starts the runner (`YGBot`).
 
-### `ygbot/bot.py` (`YGBot`)
-The central orchestrator:
-- Manages the infinite or fixed-count duel farming loop.
-- Executes transitions across game states (`LOBBY` -> `LOADING` -> `IN_DUEL` -> `VICTORY`).
+### `ygbot/bot.py` (`YGBot` Runner)
+The central orchestration loop executing actions sequentially:
+- Connects to Google Chrome via CDP.
+- Dispatches page-organized actions (`StartDuelAction` on `LobbyPage`, `InspectHandAction`, `FusionAction`, `SummonAction`, `AttackAction`, and `EndTurnAction` on `GameBoardPage`).
 - Tracks duel statistics (victories, duels played, win rate, duration per duel).
 - Handles graceful interrupts (`Ctrl+C`) and prints the final session summary.
 
-### `ygbot/cdp_client.py` (`CDPClient` & `SimpleWebSocket`)
-The communication layer with Google Chrome:
-- Implements a pure Python RFC 6455 WebSocket client using standard `socket`, `struct`, and `base64`.
-- Queries the Chrome HTTP debugging endpoint (`/json/list`) to locate the game tab.
-- Evaluates JavaScript expressions in the tab context (`Runtime.evaluate`).
-- Dispatches accurate mouse press and release events (`Input.dispatchMouseEvent`).
-- Supports both DOM-based target clicks and resolution-independent percentage coordinates (`x%`, `y%`).
+### `ygbot/actions/` (Action Sequencer Pattern)
+Discrete gameplay actions organized by the page where the interaction occurs:
+- **`InspectHandAction`** (`actions/game_board/`): Every time the duel board opens for the first time, navigates cards using the keyboard (`ArrowDown` to focus 1st card, then loops: `Enter` to open card box, reads optimal details, `Esc` to close box, `ArrowRight` to focus next card), stores verified cards into variable `cards_in_hand`, and prints an ASCII/Unicode table of hand cards to the console.
+- **`FusionAction`** (`actions/game_board/`): Encapsulates the main fusion logic. Evaluates hand cards against the prioritized strategy chain (`solve_hand`), executes the sequence of card clicks on `GameBoardPage`, triggers fusion, and logs the resulting card's name, ATK, and DEF to the console.
+- **`SummonAction`** (`actions/game_board/`): Manages Guardian Star selection and confirms placement of monsters on player field zones.
+- **`AttackAction`** (`actions/game_board/`): Dispatches combat commands from designated field monster zones to opponent zones or direct LP.
+- **`EndTurnAction`** (`actions/game_board/`): Dispatches turn end ('e' key) with accidental surrender prompt protection.
+- **`StartDuelAction`** (`actions/lobby/`): Interacts with `LobbyPage` to search for and select opponents and click **START DUEL**.
 
-### `ygbot/cards/` (Domain Model & Factory/Registry Pattern)
-Decoupled card representations:
-- **`CardType`** (`card_type.py`): Enumeration representing all classic Forbidden Memories archetypes (*Dragon*, *Thunder*, *Equip*, *Spell*, etc.) with domain query properties (`is_monster`, `is_equip`, `is_spell`).
-- **`Card`, `MonsterCard`, `EquipCard`, `SpellCard`** (`models.py`): Strongly typed domain classes encapsulating card stats, equip affinities (`can_equip_to()`), and attributes.
-- **`CardRegistry`** (`registry.py`): Central database of known FM cards and factory method that normalizes raw input/strings into typed `Card` objects using heuristic token matching.
+### `ygbot/pages/` (Adapted Page Object Model)
+Encapsulates Chrome DOM and canvas interaction without mixing domain or action logic:
+- **`BasePage`**: Unified browser interactions wrapped inside the middleware execution pipeline.
+- **`LobbyPage`**: Opponent card selection and START DUEL / DUEL AGAIN buttons.
+- **`GameBoardPage`**: Hand slots (0..4), field zones (0..4), Card Details modal, and Guardian Star prompts.
 
-### `ygbot/fusion/` (Strategy Pattern & Solver Engine)
-Modular fusion calculation:
-- **`FusionStrategy`** (`strategy.py`): Abstract base strategy defining the hand evaluation interface.
-  - **`THTDFusionStrategy`**: Prioritizes the meta **Twin-Headed Thunder Dragon** (2800 ATK) summon (Thunder + Dragon), chaining additional dragons and compatible equip spells.
-  - **`EquipBuffStrategy`**: Analyzes monster duplicate bonuses and matches compatible equips (e.g. *Spike Seadra* + *Shine Palace*).
-  - **`ElementalFusionStrategy`**: Pairs archetype materials (*Dragon* + *Plant* -> *Black Forest Dragon*, *Beast* + *Pyro* -> *Flame Cerebrus*, *Rock* + *Female* -> *Mystical Sand*).
-  - **`HighestAtkStrategy`**: Fallback that summons the single highest ATK monster.
-- **`FusionEngine`** (`engine.py`): The Context class coordinating the execution pipeline of fusion strategies.
-- **`FusionResult`** (`result.py`): Encapsulates sequence, play name, and estimated ATK with 3-element tuple unpacking compatibility.
-- **`ygbot/fusion_engine.py`**: Legacy facade re-exporting all symbols for 100% backward compatibility.
+### `ygbot/features/fusion/` (Pure Domain Strategies)
+Contains ONLY fusion strategies and supporting classes:
+- **`FusionStrategy`** (`strategy.py`): Abstract base strategy defining the evaluation interface.
+- **`strategies/`**: Concrete strategy implementations (`MeteorBlackDragonStrategy`, `THTDFusionStrategy`, `DiscardAndCycleStrategy`, `EquipBuffStrategy`, `ElementalFusionStrategy`, `HighestAtkStrategy`).
+- **`FusionResult`** (`result.py`): Immutable Value Object holding fusion sequence, play name, estimated ATK, and recommended Guardian Star.
 
-### `ygbot/game_interface.py` (`GameInterface`)
-The game action adapter:
-- **`detect_screen_state()`**: Inspects page text and DOM elements to determine if the screen is in `LOBBY`, `LOADING`, `IN_DUEL`, `GUARDIAN_STAR`, or `VICTORY`.
-- **`start_duel_from_lobby()`**: Clicks the opponent card and clicks the **START DUEL** button.
-- **`read_hand_cards()`**: Reads the 5 cards in hand.
-- **`choose_guardian_star()`**: Selects *Pluto* or *Mercury*.
-- **`perform_attack_sequence()`**: Activates combat and iterates across player monster zones to target opponent zones / direct LP.
-- **`click_duel_again()`**: Clicks the cyan **DUEL AGAIN** button upon victory.
+### `ygbot/features/cards/` (Domain Models & Catalog)
+- **`CardType`** (`card_type.py`): Enumeration representing all classic Forbidden Memories archetypes.
+- **`models.py`**: Strongly typed domain classes (`MonsterCard`, `EquipCard`, `SpellCard`).
+- **`known_cards.py`**: Catalog database of known cards, stats (ATK/DEF), archetypes, and Guardian Stars.
+- **`registry.py`**: Factory Method normalizing inputs into typed `Card` models.
 
-### `ygbot/config.py` (`Config`)
-Configuration dataclass that loads settings from `config.json` with safe fallback defaults and normalized coordinates for 1920x1080 (scalable to any resolution).
+### `ygbot/core/cdp/` (Decoupled CDP Architecture - Facade Pattern)
+- **`CDPClient` / `BrowserDriver`** (`client.py`): The main Facade coordinating specialized subsystems. Strips out raw socket work and exposes a clean, unified browser automation interface.
+- **`WebSocketTransport` / `SimpleWebSocket`** (`transport.py`): Low-level TCP socket lifecycle, RFC 6455 handshakes, frame encoding, masking, and ping/pong handling.
+- **`CDPSession`** (`session.py`): Tab querying (`/json/list`, `/json/version`), WebSocket lifecycle, and JSON-RPC command correlation.
+- **`CDPDOM`** (`dom.py`): Layout viewport sizing, JavaScript expression evaluation, and DOM element bounds querying.
+- **`CDPInput`** (`input.py`): Mouse clicks, coordinate scaling, and physical/synthetic keyboard dispatching (`ArrowDown`, `Enter`, `Escape`, `ArrowRight`, etc.).
 
-### `ygbot/utils.py`
-Helper utilities for terminal color rendering, formatted logging with timestamps, and elapsed time calculation.
+### `ygbot/core/` (Core Protocol & Utilities)
+- **`cdp_client.py`**: Backward-compatibility facade module re-exporting `ygbot.core.cdp`.
+- **`middleware.py`**: Execution pipeline (Logging, ErrorCapture, Delay, VisionFallback).
+- **`config.py`**: Configuration manager (.env and config.json loader).
+- **`utils.py`**: Terminal formatting, rolling console logger, duration helper, and hand card table renderer (`format_cards_table`, `print_cards_table`).
 
 ---
 
@@ -272,32 +292,59 @@ flowchart TD
         Chrome["Google Chrome Browser (:9222)"]
     end
 
-    subgraph Core["YGBot Controller"]
-        Bot["YGBot (ygbot/bot.py)\nState Machine & Farming Loop"]
-        Cfg["Config (ygbot/config.py)\nLoaded from config.json"]
+    subgraph Core["Runner (Orchestration Loop)"]
+        Bot["YGBot (ygbot/bot.py)\nState Machine & Action Orchestrator"]
+        Cfg["Config (core/config.py)\nLoaded from config.json & .env"]
     end
 
-    subgraph Logic["Game & Fusion Logic"]
-        GI["GameInterface (ygbot/game_interface.py)\nScreen State & Actions"]
-        FE["FusionEngine (ygbot/fusion/engine.py)\nStrategy Pattern Context"]
-        FS["FusionStrategies (ygbot/fusion/strategy.py)\nTHTD, EquipBuff, Elemental, HighestAtk"]
-        CR["CardRegistry & Models (ygbot/cards/)\nCardType, MonsterCard, EquipCard"]
+    subgraph Actions["Action Sequencer Layer (Organized by Page)"]
+        SDA["StartDuelAction (actions/lobby/)"]
+        IHA["InspectHandAction (actions/game_board/)"]
+        FA["FusionAction (actions/game_board/)\nMain Fusion Logic & Solving"]
+        SMA["SummonAction (actions/game_board/)"]
+        ATA["AttackAction (actions/game_board/)"]
+        ETA["EndTurnAction (actions/game_board/)"]
+    end
+
+    subgraph POM["Page Object Model (POM)"]
+        LP["LobbyPage (pages/lobby_page.py)"]
+        GBP["GameBoardPage (pages/game_board_page.py)"]
+        BP["BasePage (pages/base_page.py)"]
+    end
+
+    subgraph Logic["Domain Features Layer"]
+        FS["FusionStrategies (features/fusion/strategies/)\nPure Strategies & Supporting Classes"]
+        CR["CardRegistry & Models (features/cards/)\nCardType, MonsterCard, EquipCard"]
     end
 
     subgraph Protocol["Browser Protocol Layer"]
-        CDP["CDPClient (ygbot/cdp_client.py)\nJSON-RPC over RFC 6455 WebSocket"]
+        MW["MiddlewarePipeline (core/middleware.py)"]
+        CDP["CDPClient (core/cdp_client.py)\nJSON-RPC over RFC 6455 WebSocket"]
     end
 
     CLI --> Bot
     Cfg --> Bot
-    Bot --> GI
-    Bot --> FE
-    FE --> CR
-    FE --> FS
-    GI --> CDP
+    Bot --> SDA
+    Bot --> IHA
+    Bot --> FA
+    Bot --> SMA
+    Bot --> ATA
+    Bot --> ETA
+
+    SDA --> LP
+    IHA --> GBP
+    FA --> GBP
+    FA --> FS
+    FA --> CR
+    SMA --> GBP
+    ATA --> GBP
+    ETA --> GBP
+
+    LP --> BP
+    GBP --> BP
+    BP --> MW
+    MW --> CDP
     CDP <-->|WebSocket JSON-RPC| Chrome
-    GI -.->|Inspect Hand| FE
-    FE -.->|Card Play Sequence| GI
 ```
 
 ---

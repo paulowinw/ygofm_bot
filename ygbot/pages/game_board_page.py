@@ -129,6 +129,132 @@ class GameBoardPage(BasePage):
         except Exception:
             return False
 
+    def open_card_details(self, turn_number: Optional[int] = None) -> bool:
+        """Opens the card details box/modal for the focused card with Enter."""
+        t = turn_number or self.turn_number
+        self.send_key("Enter", description="Show card info [Enter]", turn_number=t)
+        time.sleep(self.key_delay)
+        return True
+
+    def close_card_details(self, turn_number: Optional[int] = None) -> bool:
+        """Closes the opened card details box with Escape (Esc)."""
+        t = turn_number or self.turn_number
+        self.send_key("Escape", description="Close card box [Esc]", turn_number=t)
+        time.sleep(self.key_delay)
+        return True
+
+    def focus_next_hand_card(self, turn_number: Optional[int] = None) -> bool:
+        """Focuses the next hand card by pressing ArrowRight."""
+        t = turn_number or self.turn_number
+        self.send_key("ArrowRight", description="Focus next card -> [ArrowRight]", turn_number=t)
+        if self.current_hand_slot is not None:
+            self.current_hand_slot = min(self.current_hand_slot + 1, 4)
+        else:
+            self.current_hand_slot = 0
+        time.sleep(self.key_delay)
+        return True
+
+    def read_opened_card_details(self, slot_index: int = 0, turn_number: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Extracts optimal card details (name, ATK, DEF, type, star) from the currently opened card details box in the DOM.
+        """
+        t = turn_number or self.turn_number
+        js_inspect = f"""
+        (() => {{
+            const modal = document.querySelector(
+                '.card-detail, [role="dialog"], .desktop-duel-action-group, ' +
+                '.card-modal, .card-info-box, [data-testid="card-detail-modal"], .duel-card-details'
+            ) || document.body;
+
+            const titleEl = modal.querySelector(
+                '.card-detail-title, [data-testid="card-title"], [data-testid="card-detail-name"], ' +
+                '.card-name, .modal-title, h1, h2, h3, [data-card-name]'
+            );
+            const atkEl = modal.querySelector(
+                '[data-testid="summon-atk"], .card-stat-atk, [data-testid="card-detail-atk"], .atk'
+            );
+            const defEl = modal.querySelector(
+                '[data-testid="summon-def-faceup"], [data-testid="summon-def"], .card-stat-def, ' +
+                '[data-testid="card-detail-def"], .def'
+            );
+            const typeEl = modal.querySelector(
+                '[data-testid="card-type"], .card-type, [data-testid="card-detail-type"], .type'
+            );
+            const starEl = modal.querySelector(
+                '[data-testid="guardian-star"], .guardian-star, [data-testid="card-detail-star"], .star'
+            );
+
+            let name = titleEl ? titleEl.innerText.trim() : null;
+            let atk = atkEl ? parseInt(atkEl.innerText.replace(/\\D/g, '')) || null : null;
+            let def_ = defEl ? parseInt(defEl.innerText.replace(/\\D/g, '')) || null : null;
+            let type = typeEl ? typeEl.innerText.trim() : null;
+            let star = starEl ? starEl.innerText.trim() : null;
+
+            const modalText = modal.innerText || '';
+            if (atk === null) {{
+                const atkMatch = modalText.match(/ATK\\s*[:\\/\\s]*(\\d+)/i);
+                if (atkMatch) atk = parseInt(atkMatch[1]);
+            }}
+            if (def_ === null) {{
+                const defMatch = modalText.match(/DEF\\s*[:\\/\\s]*(\\d+)/i);
+                if (defMatch) def_ = parseInt(defMatch[1]);
+            }}
+            if (!type) {{
+                const typeMatch = modalText.match(/(Dragon|Thunder|Equip|Spell|Spellcaster|Aqua|Sea Serpent|Pyro|Beast|Plant|Rock|Female|Warrior|Zombie|Machine|Fiend)/i);
+                if (typeMatch) type = typeMatch[1];
+            }}
+            if (!star) {{
+                const starMatch = modalText.match(/(Sun|Moon|Mercury|Venus|Mars|Jupiter|Saturn|Uranus|Pluto|Neptune)/i);
+                if (starMatch) star = starMatch[1];
+            }}
+
+            if (!name && modalText) {{
+                const lines = modalText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+                for (const line of lines) {{
+                    const u = line.toUpperCase();
+                    if (!u.includes('ATK') && !u.includes('DEF') && !u.includes('FUSION') &&
+                        !u.includes('ATTACK') && !u.includes('DEFENSE') && !u.includes('CONCEDE') &&
+                        !u.includes('DUEL') && line.length > 2 && line.length < 35) {{
+                        name = line;
+                        break;
+                    }}
+                }}
+            }}
+
+            return {{
+                "name": name,
+                "atk": atk,
+                "def": def_,
+                "type": type,
+                "star": star,
+            }};
+        }})()
+        """
+        data = None
+        try:
+            data = self.eval_js(js_inspect, description=f"Read opened card details (slot {slot_index})", turn_number=t)
+        except Exception:
+            pass
+
+        if not data or not data.get("name"):
+            names = self.read_hand_cards()
+            card_name = names[slot_index] if slot_index < len(names) else f"Card {slot_index + 1}"
+            data = {"name": card_name, "atk": None, "def": None, "type": None, "star": None}
+
+        return data
+
+    def inspect_card_at_slot(self, slot_index: int, turn_number: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Navigates to card slot, opens card box with Enter, extracts optimal details, and closes with Esc.
+        """
+        t = turn_number or self.turn_number
+        if self.current_hand_slot != slot_index:
+            self.navigate_to_hand_slot(slot_index, turn_number=t)
+        self.open_card_details(turn_number=t)
+        data = self.read_opened_card_details(slot_index=slot_index, turn_number=t)
+        self.close_card_details(turn_number=t)
+        return data
+
     def click_card_at_slot(self, slot_index: int, turn_number: Optional[int] = None) -> bool:
         """Clicks the card image at the given hand slot through DOM or coordinates."""
         t = turn_number or self.turn_number

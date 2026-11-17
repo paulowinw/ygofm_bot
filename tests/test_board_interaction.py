@@ -187,6 +187,40 @@ class TestCardDetailsAndScreenStates(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(self.mock_cdp.sent_keys, ["ArrowDown", "Enter"])
 
+    def test_open_and_close_card_details(self):
+        """Verifies opening card details sends Enter and closing sends Escape."""
+        self.mock_cdp.sent_keys.clear()
+        self.game.open_card_details()
+        self.assertEqual(self.mock_cdp.sent_keys, ["Enter"])
+
+        self.mock_cdp.sent_keys.clear()
+        self.game.close_card_details()
+        self.assertEqual(self.mock_cdp.sent_keys, ["Escape"])
+
+    def test_focus_next_hand_card(self):
+        """Verifies focus_next_hand_card sends ArrowRight and increments slot."""
+        self.game.current_hand_slot = 1
+        self.mock_cdp.sent_keys.clear()
+        self.game.focus_next_hand_card()
+        self.assertEqual(self.mock_cdp.sent_keys, ["ArrowRight"])
+        self.assertEqual(self.game.current_hand_slot, 2)
+
+    def test_inspect_card_at_slot_keyboard_sequence(self):
+        """Verifies inspect_card_at_slot opens with Enter, reads details, and closes with Escape."""
+        self.game.current_hand_slot = 0
+        self.mock_cdp.sent_keys.clear()
+        self.mock_cdp.eval_js_return_value = {
+            "name": "Meteor Dragon",
+            "atk": 1800,
+            "def": 2000,
+            "type": "Dragon",
+            "star": "Sun",
+        }
+        data = self.game.inspect_card_at_slot(slot_index=0)
+        self.assertEqual(data["name"], "Meteor Dragon")
+        self.assertEqual(data["atk"], 1800)
+        self.assertEqual(self.mock_cdp.sent_keys, ["Enter", "Escape"])
+
 
 if __name__ == "__main__":
     unittest.main()

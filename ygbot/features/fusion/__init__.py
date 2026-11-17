@@ -1,10 +1,10 @@
 """
 Fusion Feature Package.
-Provides fusion engine, strategies, and result value objects.
+Provides fusion strategies and result value objects.
+Note: The main fusion engine logic resides in ygbot.actions.game_board.fusion_action.
 """
 
 from .result import FusionResult
-from .engine import FusionEngine
 from .strategy import (
     FusionStrategy,
     MeteorBlackDragonStrategy,
@@ -17,7 +17,6 @@ from .strategy import (
 
 __all__ = [
     "FusionResult",
-    "FusionEngine",
     "FusionStrategy",
     "MeteorBlackDragonStrategy",
     "THTDFusionStrategy",

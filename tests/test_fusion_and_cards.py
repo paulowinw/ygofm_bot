@@ -16,13 +16,13 @@ from ygbot.features.cards import (
     TYPE_THUNDER,
 )
 from ygbot.features.fusion import (
-    FusionEngine,
     FusionResult,
     THTDFusionStrategy,
     EquipBuffStrategy,
     ElementalFusionStrategy,
     HighestAtkStrategy,
 )
+from ygbot.actions.game_board.fusion_action import FusionAction as FusionEngine
 
 
 class TestCardTypesAndModels(unittest.TestCase):

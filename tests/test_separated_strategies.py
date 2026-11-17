@@ -13,7 +13,7 @@ from ygbot.features.fusion.strategies.discard_cycle_strategy import DiscardAndCy
 from ygbot.features.fusion.strategies.equip_buff_strategy import EquipBuffStrategy
 from ygbot.features.fusion.strategies.elemental_fusion_strategy import ElementalFusionStrategy
 from ygbot.features.fusion.strategies.highest_atk_strategy import HighestAtkStrategy
-from ygbot.features.fusion.engine import FusionEngine
+from ygbot.actions.game_board.fusion_action import FusionAction as FusionEngine
 
 
 class MockBoardPage:

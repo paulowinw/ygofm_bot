@@ -1,38 +1,63 @@
 """
 Autonomous Bot Controller for Forbidden Memories Online.
 
+Main Orchestration Loop (Runner):
 Manages the rolling farming loop, state machine transitions,
-and session statistics using the Adapted Page Object Model.
+and executes discrete actions organized by page:
+- Lobby actions: StartDuelAction (interacts with LobbyPage)
+- Game board actions: InspectHandAction, FusionAction, SummonAction, AttackAction, EndTurnAction (interacts with GameBoardPage)
 """
 
 import time
 import sys
-from typing import Optional
+from typing import Optional, List
 from .core.config import Config
 from .core.cdp_client import CDPClient
+from .pages.base_page import BasePage
+from .pages.lobby_page import LobbyPage
 from .pages.game_board_page import GameBoardPage, GameState
+from .features.cards.models import Card
 from .features.cards.card_manager import CardManager
-from .features.fusion.engine import FusionEngine
+from .actions.game_board import (
+    InspectHandAction,
+    FusionAction,
+    SummonAction,
+    AttackAction,
+    EndTurnAction,
+)
+from .actions.lobby import StartDuelAction
 from .core.utils import log, Colors, format_duration
 
 
 class YGBot:
     """
-    Main autonomous duel controller orchestrating the rolling console loop.
-    Adheres to Separation of Concerns:
-    - Delegates screen interaction to GameBoardPage (Adapted POM).
-    - Delegates card parsing to CardManager.
-    - Delegates fusion choices to FusionEngine / FusionStrategy.
+    Main autonomous duel runner orchestrating the rolling console loop.
+    Coordinates discrete actions organized by page:
+    - Lobby actions: StartDuelAction
+    - Game board actions: InspectHandAction, FusionAction, SummonAction, AttackAction, EndTurnAction
     """
 
     def __init__(self, config: Optional[Config] = None):
         self.cfg = config or Config.load()
         self.cdp = CDPClient(host=self.cfg.chrome_host, port=self.cfg.chrome_port)
-        self.board = GameBoardPage(self.cdp, self.cfg)
-        self.game = self.board  # Backward-compatible alias
-        self.cards = CardManager()
-        self.fusion = FusionEngine(strategy=self.cfg.strategy)
         
+        # Page Object Model (POM) wrappers
+        self.lobby = LobbyPage(self.cdp, self.cfg)
+        self.board = GameBoardPage(self.cdp, self.cfg)
+        self.cards = CardManager()
+        
+        # Actions organized by page
+        self.start_duel_action = StartDuelAction(self.lobby)
+        self.inspect_hand_action = InspectHandAction(self.board, self.cards)
+        self.fusion_action = FusionAction(self.board, strategy=self.cfg.strategy)
+        self.summon_action = SummonAction(self.board)
+        self.attack_action = AttackAction(self.board)
+        self.end_turn_action = EndTurnAction(self.board)
+
+        # Variables storing card state and board tracking
+        self.cards_in_hand: List[Card] = []
+        self.is_board_first_open: bool = True
+
         # Stats & counters
         self.duels_played = 0
         self.duels_won = 0
@@ -75,47 +100,42 @@ class YGBot:
         self.board.turn_number = self.turn_number
         self.board.dismiss_surrender_modal(turn_number=self.turn_number)
 
-        log(f"[Turn {self.turn_number}] Inspecting hand cards...", "DUEL")
-        
-        # 1. Read hand cards and evaluate via CardManager
-        raw_hand = self.board.read_hand_cards()
-        hand_models = self.cards.parse_hand(raw_hand)
-        log(f"Hand cards: {', '.join(c.name for c in hand_models)}", "INFO")
-        
-        # 2. Compute best move via FusionEngine & Strategy
-        result = self.fusion.solve_hand(hand_models)
+        # 1. Action: When board opens for the first time, click cards one by one to get card data,
+        # store in variable to perform fusions after having all card info, and print table to console.
+        if self.is_board_first_open or self.turn_number == 1:
+            log(f"[Turn {self.turn_number}] Board opened for the first time. Inspecting cards one by one...", "DUEL")
+            self.cards_in_hand = self.inspect_hand_action.execute(turn_number=self.turn_number)
+            self.is_board_first_open = False
+        else:
+            self.cards_in_hand = self.inspect_hand_action.execute(turn_number=self.turn_number)
+
+        # 2. Action: Fusion - solve hand using strategies and execute fusion after having all cards info in hand
+        result = self.fusion_action.solve_hand(self.cards_in_hand)
         sequence, play_name, atk = result
         guardian_star = getattr(result, "guardian_star", None) or self.cfg.guardian_star
-        log(f"[Turn {self.turn_number}] Target play: {Colors.BOLD}{play_name}{Colors.END} (Est. ATK: {atk})", "FUSION")
-        log(f"[Turn {self.turn_number}] Playing card sequence: {[i+1 for i in sequence]}", "FUSION")
-        
-        # 3. Engine requests specific card interactions from GameBoardPage
-        self.fusion.execute_fusion(result, board_page=self.board, turn_number=self.turn_number)
+        log(f"[Turn {self.turn_number}] Optimal play: {Colors.BOLD}{play_name}{Colors.END} (Est. ATK: {atk})", "FUSION")
+
+        # 3. Action: Execute fusion on board and log name, ATK, and DEF of result
+        self.fusion_action.execute(result, turn_number=self.turn_number)
         time.sleep(0.6)
 
-        # 4. Check for Guardian Star prompt or Card Details recovery
-        state = self.board.detect_screen_state()
-        if state == GameState.GUARDIAN_STAR:
-            self.board.choose_guardian_star(guardian_star, turn_number=self.turn_number)
-            time.sleep(0.5)
-        elif state == GameState.CARD_DETAILS:
-            log("Still at Card Details screen after fusion sequence. Selecting FUSION to recover...", "WARN")
-            self.board.select_fusion_on_card_details(turn_number=self.turn_number)
-            time.sleep(0.5)
-            return
-
-        # 5. Place monster on field
-        if self.board.detect_screen_state() not in (GameState.CARD_DETAILS, GameState.SURRENDER_PROMPT):
-            self.board.place_monster_on_field(target_zone=0, turn_number=self.turn_number)
-            time.sleep(self.cfg.turn_wait)
+        # 4. Action: Summon & Placement (handles guardian star prompt & field zone placement)
+        self.summon_action.execute(
+            guardian_star=guardian_star,
+            target_zone=0,
+            turn_number=self.turn_number,
+        )
+        time.sleep(self.cfg.turn_wait)
         
-        # 6. Execute combat / attacks
-        if self.board.detect_screen_state() not in (GameState.CARD_DETAILS, GameState.SURRENDER_PROMPT):
-            self.board.execute_attack(player_zone=2, opponent_zone=2, turn_number=self.turn_number)
+        # 5. Action: Execute combat / attacks
+        self.attack_action.execute(
+            player_zone=2,
+            opponent_zone=2,
+            turn_number=self.turn_number,
+        )
 
-        # 7. End turn with 'e' key
-        if self.board.detect_screen_state() not in (GameState.SURRENDER_PROMPT,):
-            self.board.end_turn(turn_number=self.turn_number)
+        # 6. Action: End turn
+        self.end_turn_action.execute(turn_number=self.turn_number)
 
         self.turn_number += 1
 
@@ -127,6 +147,10 @@ class YGBot:
         self.start_time = time.time()
         self.current_duel_start = time.time()
         self.turn_number = 1
+        self.is_board_first_open = True
+        self.cards_in_hand = []
+        self.inspect_hand_action.reset()
+
         log(f"Starting auto-dueler against: {Colors.BOLD}{self.cfg.opponent}{Colors.END}", "SUCCESS")
         log(f"Strategy: {self.cfg.strategy} | Guardian Star: {self.cfg.guardian_star}", "INFO")
         log("Press Ctrl+C at any time to pause or stop.", "INFO")
@@ -139,7 +163,10 @@ class YGBot:
                 
                 if state == GameState.LOBBY:
                     log("Detected Free Duel lobby.", "INFO")
-                    self.board.start_duel_from_lobby(self.cfg.opponent, turn_number=self.turn_number)
+                    self.is_board_first_open = True
+                    self.cards_in_hand = []
+                    self.inspect_hand_action.reset()
+                    self.start_duel_action.execute(self.cfg.opponent, turn_number=self.turn_number)
                     time.sleep(2.0)
                     consecutive_idle = 0
 
@@ -176,6 +203,9 @@ class YGBot:
                     duel_duration = time.time() - self.current_duel_start
                     self.current_duel_start = time.time()
                     self.turn_number = 1
+                    self.is_board_first_open = True
+                    self.cards_in_hand = []
+                    self.inspect_hand_action.reset()
                     
                     log(f"{Colors.GREEN}{Colors.BOLD}DUEL #{self.duels_played} WON!{Colors.END} (Duration: {format_duration(duel_duration)})", "SUCCESS")
                     
@@ -183,15 +213,19 @@ class YGBot:
                         log(f"Reached maximum requested duels ({self.cfg.max_duels}). Stopping.", "SUCCESS")
                         break
 
-                    self.board.click_duel_again(turn_number=self.turn_number)
+                    self.lobby.click_duel_again(turn_number=self.turn_number)
                     time.sleep(2.5)
                     consecutive_idle = 0
 
                 elif state == GameState.DEFEAT:
                     self.duels_played += 1
                     self.turn_number = 1
+                    self.is_board_first_open = True
+                    self.cards_in_hand = []
+                    self.inspect_hand_action.reset()
+
                     log(f"{Colors.RED}Duel defeated.{Colors.END}", "WARN")
-                    self.board.click_duel_again(turn_number=self.turn_number)
+                    self.lobby.click_duel_again(turn_number=self.turn_number)
                     time.sleep(2.5)
                     consecutive_idle = 0
 
