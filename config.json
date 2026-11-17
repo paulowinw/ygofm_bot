@@ -1,0 +1,56 @@
+{
+  "chrome": {
+    "host": "127.0.0.1",
+    "debug_port": 9222,
+    "game_url": "https://ygofm.com/",
+    "target_url_pattern": "ygofm.com",
+    "alt_url_pattern": "intercityygo.com",
+    "auto_launch": false,
+    "chrome_binary": "google-chrome",
+    "user_data_dir": "~/.config/ygbot-chrome"
+  },
+  "farming": {
+    "opponent": "High Mage Martis",
+    "max_duels": 0,
+    "strategy": "THTD",
+    "guardian_star": "Pluto",
+    "action_delay": 0.5,
+    "turn_wait": 1.5,
+    "combat_wait": 2.0,
+    "loading_timeout": 30
+  },
+  "coordinates": {
+    "hand_cards": [
+      [0.372, 0.870],
+      [0.417, 0.870],
+      [0.461, 0.870],
+      [0.505, 0.870],
+      [0.550, 0.870]
+    ],
+    "guardian_star": {
+      "Pluto": [0.443, 0.856],
+      "Mercury": [0.536, 0.856],
+      "left": [0.443, 0.856],
+      "right": [0.536, 0.856]
+    },
+    "player_zones": [
+      [0.333, 0.523],
+      [0.396, 0.523],
+      [0.458, 0.523],
+      [0.521, 0.523],
+      [0.583, 0.523]
+    ],
+    "opponent_zones": [
+      [0.333, 0.370],
+      [0.396, 0.370],
+      [0.458, 0.370],
+      [0.521, 0.370],
+      [0.583, 0.370]
+    ],
+    "opponent_direct": [0.500, 0.250],
+    "combat_button": [0.500, 0.856],
+    "start_duel_button": [0.911, 0.468],
+    "duel_again_button": [0.448, 0.588],
+    "return_free_duel_button": [0.552, 0.588]
+  }
+}

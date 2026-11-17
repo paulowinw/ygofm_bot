@@ -1,0 +1,14 @@
+# ==============================================================================
+# YGBot Dependencies
+#
+# NOTE: The core bot runs with 0 external dependencies on Python 3.8+
+# using the native Chrome DevTools Protocol (CDP) client!
+#
+# Below are optional packages for users who want desktop screen clicking:
+# ==============================================================================
+
+# Optional: Desktop mouse control & computer vision (for vision mode)
+# pyautogui>=0.9.54
+# opencv-python>=4.8.0
+# pillow>=10.0.0
+# requests>=2.31.0
